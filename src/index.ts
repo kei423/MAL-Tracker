@@ -17,12 +17,28 @@ async function main() {
         try {
             await handleOAuthCallback();
             status.textContent = "MAL authorization succeeded!";
+
+            await testAnimeList();
         } catch (error) {
             status.textContent = `Authorization failed: ${
                 error instanceof Error ? error.message : String(error)
             }`;
         }
     }
+}
+
+async function testAnimeList() {
+    const response = await fetch(
+        "http://localhost:3000/api/mal/animelist"
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error ?? "Failed to fetch anime list");
+    }
+
+    console.log("My anime list:", data);
 }
 
 void main();

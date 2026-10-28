@@ -14,6 +14,15 @@ const PORT = 3000;
 const clientId = process.env.MAL_CLIENT_ID;
 const clientSecret = process.env.MAL_CLIENT_SECRET;
 
+interface MALTokens {
+    access_token: string;
+    refresh_token: string;
+    token_type: string;
+    expires_in: number;
+}
+
+let malTokens: MALTokens | null = null;
+
 app.post("/api/auth/mal/callback", async (req, res) => {
     try {
         const { code, verifier, redirectUri } = req.body;
@@ -60,12 +69,50 @@ app.post("/api/auth/mal/callback", async (req, res) => {
         }
 
         const data = JSON.parse(responseText);
+        
+        malTokens = data;
 
-        res.json(data);
+        res.json({ success: true });
+        
         console.log(data);
     } catch (error) {
         console.error("OAuth callback failed:", error);
         res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.get("/api/mal/animelist", async (req, res) => {
+    if (!malTokens) {
+        res.status(401).json({
+            error: "Please authorize with MAL first"
+        });
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status&limit=10", 
+            {
+                headers: {
+                    Authorization: `Bearer ${malTokens.access_token}`,
+                },
+            }
+        );
+
+        if (!response.ok) {
+            res.status(response.status).json({
+                error: "Failed to retrieve anime list from MAL"
+            });
+            return;
+        }
+
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        console.error("Anime list request failed:", error);
+        res.status(500).json({
+            error: "Internal server error",
+        });
     }
 });
 

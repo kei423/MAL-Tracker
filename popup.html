@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 260px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 12px; margin: 0; background: #1a1a24; color: #fff; }
+    .card { background: #242432; border-radius: 8px; padding: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+    h3 { margin: 0 0 6px 0; font-size: 15px; color: #00ccb8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    p { margin: 4px 0; font-size: 13px; color: #b3b3c2; }
+    .badge {
+      display: inline-block; padding: 4px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: bold; margin-top: 8px; text-transform: uppercase;
+    }
+    .finished { background-color: #28a745; color: #fff; }
+    .watching { background-color: #ffc107; color: #000; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3 id="anime-title">No Anime Playing</h3>
+    <p id="anime-episode">-</p>
+    <p>Progress: <span id="anime-progress">0%</span></p>
+    <div id="status-badge" class="badge watching">In Progress</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -7,12 +7,22 @@
   "scripts": {
     "dev": "tsx watch src/tracker.ts",
     "build": "tsc",
-    "start": "node dist/tracker.js"
+    "start": "node dist/tracker.js",
+    "queue:publish": "tsx src/publisher.ts",
+    "queue:start": "node dist/publisher.js",
+    "test:queue": "npm run build && node --test tests/rabbitmq.integration.test.mjs",
+    "mal:connect": "tsx src/connect-mal.ts",
+    "sync:worker": "tsx src/sync-worker.ts",
+    "sync:start": "node dist/sync-worker.js",
+    "test:sync": "npm run build && node --test tests/mal-sync.integration.test.mjs tests/mal-list.integration.test.mjs",
+    "test:extension": "npm run build && node --test tests/extension.integration.test.mjs",
+    "test:extension:browser": "node tests/extension.browser-smoke.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/amqplib": "^0.10.8",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
@@ -21,6 +31,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "amqplib": "^2.4.2",
     "cors": "^2.8.6",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",

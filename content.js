@@ -1,180 +1,94 @@
-// Helper to check if extension context is alive without throwing
-function isContextValid() {
-  try {
-    return !!(chrome && chrome.runtime && chrome.runtime.id);
-  } catch (e) {
-    return false;
-  }
-}
+(() => {
+  // Some extension reloads/matching rules can inject twice into one document.
+  if (globalThis.__malTrackerInjected) return;
+  globalThis.__malTrackerInjected = true;
+  const topFrame = window.self === window.top;
+  const supported = location.hostname === "anikototv.bz" || location.hostname.endsWith(".anikototv.bz");
+  if (topFrame && !supported) return;
 
-// --- 1. Main Page Context: Extract Anime Name & Episode ---
-if (window.self === window.top) {
-  function getAniKotoDetails() {
-    let title = "Unknown Anime";
-    let episode = "Unknown Episode";
-
-    // Check if we are on a watch page
-    const isWatchPage = window.location.pathname.includes("/watch") || window.location.pathname.includes("/detail");
-    if (!isWatchPage && window.location.pathname === "/") {
-      return { title: "Browsing AniKoto", episode: "Home / Menu", isIdle: true };
-    }
-
-    // --- Direct Target: Exact h1 title element from your DOM tree ---
-    // Targets <h1 itemprop="name" class="title d-title">
-    const titleEl = document.querySelector(
-      'h1[itemprop="name"], h1.title.d-title, #w-info .info h1, h1.title'
-    );
-
-    if (titleEl && titleEl.innerText.trim()) {
-      title = titleEl.innerText.trim();
-    } else {
-      // Secondary fallback to breadcrumbs
-      const breadcrumbLink = document.querySelector(".breadcrumb li:nth-last-child(2) a, .breadcrumb-item:nth-last-child(2) a");
-      if (breadcrumbLink && breadcrumbLink.innerText.trim()) {
-        title = breadcrumbLink.innerText.trim();
-      }
-    }
-
-    // --- Episode Extraction ---
-    // Reads episode number from the active episode list or URL
-    const activeEpEl = document.querySelector(".ep-item.active, .ssl-item.active, .item.active, .eps-item.active");
-    if (activeEpEl) {
-      const epNum = activeEpEl.getAttribute("data-number") || activeEpEl.innerText.trim();
-      episode = `Episode ${epNum}`;
-    } else {
-      const urlMatch = window.location.pathname.match(/ep-(\d+)|episode-(\d+)/i);
-      if (urlMatch) {
-        episode = `Episode ${urlMatch[1] || urlMatch[2]}`;
-      }
-    }
-
-    return { title, episode, isIdle: false };
+  function alive() {
+    try { return Boolean(chrome.runtime?.id); } catch { return false; }
   }
 
-  // Check state on load and URL changes (SPAs)
-  function checkPageState() {
-    if (!isContextValid()) return;
-    const meta = getAniKotoDetails();
-
-    if (meta.isIdle) {
-      const idlePayload = {
-        title: "Browsing AniKoto",
-        episode: "Home / Menu",
-        currentTime: 0,
-        duration: 0,
-        progress: "0%",
-        isFinished: false,
-        isBroken: false,
-        isIdle: true,
-        url: window.location.href,
-        updatedAt: new Date().toISOString()
-      };
+  function details() {
+    const watchPage = /\/(watch|detail)(?:\/|$)/i.test(location.pathname);
+    const titleElement = document.querySelector('h1[itemprop="name"], h1.title.d-title, #w-info .info h1, h1.title') ??
+      document.querySelector(".breadcrumb li:nth-last-child(2) a, .breadcrumb-item:nth-last-child(2) a");
+    const title = titleElement?.textContent?.trim() || "Unknown Anime";
+    const active = document.querySelector(".ep-item.active, .ssl-item.active, .eps-item.active, .item.active[data-number]");
+    let number = active?.getAttribute("data-number") || active?.textContent?.trim();
+    if (!number) number = location.pathname.match(/(?:ep|episode)-(\d+)(?:\/|$)/i)?.[1];
+    const malIds = new Set();
+    const info = document.querySelector("#w-info, .anime-info, .film-detail, .watch-info") ?? document;
+    for (const link of info.querySelectorAll('a[href*="myanimelist.net/anime/"]')) {
       try {
-        chrome.storage.local.set({ lastWatchedAnime: idlePayload });
-      } catch (err) {}
+        const url = new URL(link.href, location.href);
+        const id = ["https:", "http:"].includes(url.protocol) && ["myanimelist.net", "www.myanimelist.net"].includes(url.hostname)
+          ? Number(url.pathname.match(/^\/anime\/([1-9]\d*)(?:\/|$)/)?.[1]) : 0;
+        if (Number.isSafeInteger(id) && id > 0) malIds.add(id);
+      } catch { /* Ignore malformed links. */ }
     }
+    for (const element of [info, ...info.querySelectorAll("[data-mal-id], [data-myanimelist-id]")]) {
+      const raw = element.getAttribute?.("data-mal-id") || element.getAttribute?.("data-myanimelist-id");
+      const id = /^[1-9]\d*$/.test(raw ?? "") ? Number(raw) : 0;
+      if (Number.isSafeInteger(id) && id > 0) malIds.add(id);
+    }
+    return { title, episode: number ? (/^\d+$/.test(number) ? `Episode ${number}` : number) : "Unknown Episode", isIdle: !watchPage,
+      malAnimeId: malIds.size === 1 ? [...malIds][0] : null };
   }
 
-  checkPageState();
-  let lastUrl = location.href; 
-  new MutationObserver(() => {
-    if (location.href !== lastUrl) {
-      lastUrl = location.href;
-      setTimeout(checkPageState, 1000);
-    }
-  }).observe(document, { subtree: true, childList: true });
+  let lastKey = "", lastReport = 0;
+  function publish(status) {
+    if (!alive()) return;
+    if (!topFrame) { window.parent.postMessage({ type: "ANIME_PROGRESS_UPDATE", ...status }, "*"); return; }
+    const meta = details();
+    const ratio = status.duration > 0 ? status.currentTime / status.duration : 0;
+    const key = `${meta.title}:${meta.episode}:${meta.malAnimeId}:${meta.isIdle}:${Boolean(status.isBroken)}:${ratio >= 0.9}`;
+    if (key === lastKey && Date.now() - lastReport < 5000) return;
+    lastKey = key; lastReport = Date.now();
+    void chrome.runtime.sendMessage({ type: "TRACKER_MEDIA_UPDATE", media: { ...status, ...meta } }).catch(() => {});
+  }
 
-  // Listen for progress messages sent from the video iframe
+  // Accept progress only from an actual child frame. Nested player frames relay
+  // to their parent until the supported AniKoto top frame adds episode metadata.
   window.addEventListener("message", (event) => {
-    if (!event.data) return;
-    if (!isContextValid()) return;
-
-    const meta = getAniKotoDetails();
-    if (meta.isIdle) return;
-
-    if (event.data.type === "ANIME_STREAM_ERROR") {
-      const payload = {
-        title: meta.title,
-        episode: meta.episode,
-        currentTime: 0,
-        duration: 0,
-        progress: "Error / Dead Link",
-        isFinished: false,
-        isBroken: true,
-        isIdle: false,
-        url: window.location.href,
-        updatedAt: new Date().toISOString()
-      };
-      try {
-        chrome.storage.local.set({ lastWatchedAnime: payload });
-      } catch (err) {}
-      return;
+    if (!["ANIME_PROGRESS_UPDATE", "ANIME_STREAM_ERROR"].includes(event.data?.type)) return;
+    if (![...document.querySelectorAll("iframe")].some((frame) => frame.contentWindow === event.source)) return;
+    const currentTime = event.data.currentTime, duration = event.data.duration;
+    if (event.data.type === "ANIME_STREAM_ERROR" || event.data.isBroken) {
+      publish({ currentTime: 0, duration: 0, isBroken: true }); return;
     }
-
-    if (event.data.type === "ANIME_PROGRESS_UPDATE") {
-      const payload = {
-        title: meta.title,
-        episode: meta.episode,
-        currentTime: event.data.currentTime,
-        duration: event.data.duration,
-        progress: event.data.progress,
-        isFinished: event.data.isFinished,
-        isBroken: false,
-        isIdle: false,
-        url: window.location.href,
-        updatedAt: new Date().toISOString()
-      };
-
-      try {
-        chrome.storage.local.set({ lastWatchedAnime: payload });
-      } catch (err) {}
-    }
+    if (typeof currentTime !== "number" || typeof duration !== "number" || !Number.isFinite(currentTime) ||
+        !Number.isFinite(duration) || duration <= 0 || currentTime < 0 || currentTime > duration + 2) return;
+    publish({ currentTime, duration, isBroken: false });
   });
-} 
 
-// --- 2. Iframe Context: Video Player Tracker ---
-else {
-  function trackVideoInsideIframe() {
-    const video = document.querySelector("video");
-    if (!video) return;
-
-    const sendStatus = () => {
-      if (video.error || video.networkState === 3) {
-        window.parent.postMessage({ type: "ANIME_STREAM_ERROR" }, "*");
-        return;
-      }
-
-      if (!video.duration || isNaN(video.duration) || video.duration === 0) return;
-
-      const currentTime = video.currentTime;
-      const duration = video.duration;
-      const percentage = ((currentTime / duration) * 100).toFixed(1);
-      const isFinished = video.ended || (currentTime / duration) >= 0.90;
-
-      window.parent.postMessage({
-        type: "ANIME_PROGRESS_UPDATE",
-        currentTime: Math.floor(currentTime),
-        duration: Math.floor(duration),
-        progress: `${percentage}%`,
-        isFinished: isFinished
-      }, "*");
-    };
-
-    video.addEventListener("timeupdate", sendStatus);
-    video.addEventListener("play", sendStatus);
-    video.addEventListener("error", sendStatus);
-    video.addEventListener("stalled", sendStatus);
-    
-    setTimeout(sendStatus, 2000);
+  const tracked = new WeakSet();
+  function attachVideos() {
+    for (const video of document.querySelectorAll("video")) {
+      if (tracked.has(video)) continue;
+      tracked.add(video);
+      const send = () => {
+        if (video.error || video.networkState === 3) {
+          publish({ currentTime: 0, duration: 0, isBroken: true }); return;
+        }
+        if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+        publish({ currentTime: video.currentTime, duration: video.duration, isBroken: false });
+      };
+      for (const event of ["timeupdate", "play", "pause", "ended", "error"]) video.addEventListener(event, send);
+      send();
+    }
   }
 
+  let previousUrl = location.href;
   const observer = new MutationObserver(() => {
-    if (document.querySelector("video")) {
-      trackVideoInsideIframe();
-      observer.disconnect();
+    attachVideos();
+    if (topFrame && previousUrl !== location.href) {
+      previousUrl = location.href; lastKey = "";
+      publish({ currentTime: 0, duration: 0, isBroken: false });
     }
   });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-  trackVideoInsideIframe();
-}
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  if (topFrame) publish({ currentTime: 0, duration: 0, isBroken: false });
+  attachVideos();
+})();

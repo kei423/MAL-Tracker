@@ -1,6 +1,6 @@
 const clientId = "0e6a4bcb109c4239c63f77d8ccc02b85"
 const PORT = 8080;
-const redirectUri = `http://localhost:${PORT}`;
+const redirectUri = `http://localhost:${PORT}/`;
 
 export function oauth() {
     window.location.href = generateUrl();
@@ -19,12 +19,12 @@ function generateUrl(): string {
     if (!clientId) {
         throw new Error("Missing MAL_CLIENT_ID");
     }
-    
+
     const params = new URLSearchParams({
         response_type: "code",
         client_id: clientId,
         state: state,
-        // redirect_uri: redirectUri,
+        redirect_uri: redirectUri,
         code_challenge: verifier,
         code_challenge_method: "plain",
     });
@@ -42,14 +42,14 @@ export function generateCodeVerifier(byteLength: number): string {
         .replace(/=+$/, "");
 }
 
-interface MALTokens {
-    access_token: string;
-    refresh_token: string;
-    token_type: string;
-    expires_in: number;
+interface MALConnection {
+    success: boolean;
+    userId: string;
+    malUserId: number;
+    listSync: { state: "synced" | "pending"; imported: number; error?: string };
 }
 
-export async function handleOAuthCallback(): Promise<MALTokens> {
+export async function handleOAuthCallback(): Promise<MALConnection> {
     const callbackUrl = new URL(window.location.href)
     const callbackParams = callbackUrl.searchParams;
 
@@ -93,8 +93,12 @@ export async function handleOAuthCallback(): Promise<MALTokens> {
         throw new Error("Token exchange failed");
     }
 
-    const tokens: MALTokens = await response.json();
-    return tokens;
+    const connection: MALConnection = await response.json();
+    localStorage.setItem("userId", connection.userId);
+    sessionStorage.removeItem("verifier");
+    sessionStorage.removeItem("oauth_state");
+    window.history.replaceState({}, document.title, callbackUrl.pathname);
+    return connection;
 
     // // no cors
 

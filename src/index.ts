@@ -15,8 +15,10 @@ async function main() {
         status.textContent = "Completing MAL authorization...";
 
         try {
-            await handleOAuthCallback();
-            status.textContent = "MAL authorization succeeded!";
+            const connection = await handleOAuthCallback();
+            status.textContent = connection.listSync.state === "synced"
+                ? `MAL connected. Imported ${connection.listSync.imported} anime entries.`
+                : "MAL connected. List import is pending and will be retried by the sync worker.";
 
             await testAnimeList();
         } catch (error) {
@@ -29,7 +31,7 @@ async function main() {
 
 async function testAnimeList() {
     const response = await fetch(
-        "http://localhost:3000/api/mal/animelist"
+        `http://localhost:3000/api/mal/animelist/local?userId=${encodeURIComponent(localStorage.getItem("userId") ?? "")}`
     );
 
     const data = await response.json();

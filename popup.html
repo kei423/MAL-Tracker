@@ -1,27 +1,77 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
+  <title>MAL Tracker</title>
   <style>
-    body { width: 260px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 12px; margin: 0; background: #1a1a24; color: #fff; }
-    .card { background: #242432; border-radius: 8px; padding: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-    h3 { margin: 0 0 6px 0; font-size: 15px; color: #00ccb8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    p { margin: 4px 0; font-size: 13px; color: #b3b3c2; }
-    .badge {
-      display: inline-block; padding: 4px 10px; border-radius: 12px;
-      font-size: 11px; font-weight: bold; margin-top: 8px; text-transform: uppercase;
-    }
-    .finished { background-color: #28a745; color: #fff; }
-    .watching { background-color: #ffc107; color: #000; }
+    body { width: 340px; font-family: 'Segoe UI', sans-serif; padding: 14px; margin: 0; background: #1a1a24; color: #fff; }
+    .card { background: #242432; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    h1 { margin: 0 0 6px; font-size: 16px; color: #00ccb8; overflow-wrap: anywhere; }
+    h2 { font-size: 14px; margin: 0 0 8px; }
+    p, label { margin: 6px 0; font-size: 12px; line-height: 1.5; color: #c6c6d1; }
+    label { display: block; }
+    select, input[type=text], button { box-sizing: border-box; width: 100%; padding: 8px; margin: 4px 0; border-radius: 4px; border: 1px solid #525264; }
+    select, input { background: #191922; color: white; }
+    button { background: #007e74; color: white; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; background: #525264; }
+    #sync-message, #feedback { overflow-wrap: anywhere; }
+    #feedback { color: #ffdc91; min-height: 18px; }
+    .hint { font-size: 11px; }
+    dialog { width: 280px; max-width: calc(100% - 40px); border: 1px solid #525264; border-radius: 8px; padding: 16px; background: #242432; color: #fff; }
+    dialog::backdrop { background: #000b; }
+    .secondary { background: #424253; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h3 id="anime-title">No Anime Playing</h3>
+  <section class="card">
+    <h1 id="anime-title">No anime playing</h1>
     <p id="anime-episode">-</p>
-    <p>Progress: <span id="anime-progress">0%</span></p>
-    <div id="status-badge" class="badge watching">In Progress</div>
-  </div>
-  <script src="popup.js"></script>
+    <p>Playback: <span id="anime-progress">0%</span></p>
+    <span id="status-badge" class="badge">Waiting for playback</span>
+    <p id="sync-message" aria-live="polite">Allow account updates to start automatic anime detection and syncing.</p>
+  </section>
+
+  <section class="card">
+    <h2>Tracker account</h2>
+    <label for="account">Connected MAL account</label>
+    <select id="account"><option value="">Loading accounts...</option></select>
+    <p id="account-note" class="hint"></p>
+    <p id="permission-status" aria-live="polite">Account changes are not allowed yet.</p>
+    <button id="permission-button" class="secondary" disabled>Allow account changes</button>
+    <label><input id="enabled" type="checkbox" disabled> Automatically save episodes at 90% watched</label>
+    <button id="save-settings">Save account settings</button>
+    <p class="hint">No accounts? Run <code>npm run mal:connect</code>, finish browser authorization, then reopen this popup.</p>
+  </section>
+
+  <section class="card">
+    <h2>Anime detection</h2>
+    <p id="mapping">The playing anime will be identified automatically.</p>
+    <p class="hint">Uses the page's MAL ID or an exact MAL title/alias match. Normal tracking requires no manual selection.</p>
+    <button id="detect-button" class="secondary">Retry anime detection</button>
+    <details id="manual-link">
+    <summary>Correct an unmatched or incorrect show</summary>
+    <label for="search">Search MAL title, anime ID, or MAL anime URL</label>
+    <input id="search" type="text" maxlength="100" placeholder="Anime title or MAL ID">
+    <button id="search-button">Search MAL</button>
+    <label for="results">Choose the correct show and season</label>
+    <select id="results"><option value="">Search for the anime first</option></select>
+    <button id="link-button" disabled>Confirm MAL correction</button>
+    <p class="hint">A correction overrides automatic matching for this account and detected show title.</p>
+    </details>
+    <p class="hint">At 90% watched, episodes save as watching. The final episode marks the anime completed when MAL's total episode count is known.</p>
+  </section>
+  <button id="retry-button">Retry API / refresh sync status</button>
+  <p id="feedback" role="status"></p>
+  <dialog id="permission-dialog" aria-labelledby="permission-title" aria-describedby="permission-description">
+    <h2 id="permission-title">Allow changes to your MAL account?</h2>
+    <p id="permission-description">MAL Tracker will update watched episode counts and watching or completed status for automatically detected shows. Episodes are saved automatically at 90% watched, even when this popup is closed. Watching the final episode marks the anime completed when MAL's total episode count is known.</p>
+    <p id="permission-account"></p>
+    <p class="hint">Your choice is remembered for this account. You can revoke permission in this popup.</p>
+    <p id="permission-error" role="alert"></p>
+    <button id="allow-permission">Allow updates</button>
+    <button id="deny-permission" class="secondary">Not now</button>
+  </dialog>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>
